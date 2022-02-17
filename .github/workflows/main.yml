@@ -1,0 +1,48 @@
+name: Merged PullRequest statistics DataDog metric
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+        
+    - name: Install datadog
+      run: |
+        python -m pip install --upgrade pip
+        pip install datadog
+
+    - name: Set Up Node.js
+      uses: actions/setup-node@v1
+      with:
+        node-version: 14
+        
+    - name: Install merged-pr-stat
+      run: |
+        npm install -g shibayu36/merged-pr-stat
+
+    - name: Check version
+      run: |
+        dog -v
+        merged-pr-stat -V
+
+    - name: Post merged_pr_stat datadog metrics
+      env:
+        TZ: 'Asia/Tokyo'
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+        DATADOG_APP_KEY: ${{ secrets.DATADOG_APP_KEY }}
+      run: |
+        start_time=$(date -d '-7 day' '+%Y-%m-%dT00:00:00')
+        end_time=$(date -d '-1 day' '+%Y-%m-%dT23:59:59')
+        json=$(merged-pr-stat --start=$start_time --end=$end_time --query="repo:microsoft/vscode base:main")
+        echo $json | jq -rc 'to_entries[] |[.key, .value] | @tsv' | xargs -n2 bash -c 'dog metric post github.merged_pr_stat.$0 $1 --tags "repository:microsoft/vscode"'
